@@ -20,7 +20,7 @@ const Option = (props) => (
   </components.Option>
 );
 
-// Hide selected tags (chips) for cleaner UI with only checkboxes visible in dropdown
+// Hide selected tags/chips so that placeholder is always visible
 const MultiValueContainer = () => null;
 
 function TicketDashboard() {
@@ -73,11 +73,10 @@ function TicketDashboard() {
     { value: "unassigned", label: "Unassigned" },
   ];
 
-  // This decides which statuses are shown; if none, show all by default.
+  // Decide which statuses are shown; if none selected, show all by default
   const selectedStatusKeys = selectedStatuses.length
     ? selectedStatuses.map((s) => s.value)
     : ["open", "hold", "closed", "escalated", "unassigned"];
-
 
   useEffect(() => {
     const filteredRows = rows.filter((row) => {
@@ -150,29 +149,39 @@ function TicketDashboard() {
       if (escalatedFlag === "escalated") candidateMap[candidate].escalated++;
     });
 
-    const candidatesArr = Object.entries(candidateMap);
-
+    // Calculate totals for legend
     let open = 0,
       hold = 0,
       closed = 0,
       escalated = 0,
       unassigned = 0;
-    candidatesArr.forEach(([_, val]) => {
+    Object.values(candidateMap).forEach((val) => {
       open += val.open;
       hold += val.hold;
       closed += val.closed;
       escalated += val.escalated;
       unassigned += val.unassigned;
     });
-
-    setFilteredCandidates(candidatesArr);
     setOpenSum(open);
     setHoldSum(hold);
     setClosedSum(closed);
     setEscalatedSum(escalated);
     setUnassignedSum(unassigned);
+
+    // Filter candidates to only those with tickets in selected statuses
+    const filteredCandidatesArr = Object.entries(candidateMap).filter(([candidate, counts]) => {
+      let totalCount = 0;
+      if (selectedStatusKeys.includes("open")) totalCount += counts.open;
+      if (selectedStatusKeys.includes("hold")) totalCount += counts.hold;
+      if (selectedStatusKeys.includes("closed")) totalCount += counts.closed;
+      if (selectedStatusKeys.includes("escalated")) totalCount += counts.escalated;
+      if (selectedStatusKeys.includes("unassigned")) totalCount += counts.unassigned;
+      return totalCount > 0;
+    });
+
+    setFilteredCandidates(filteredCandidatesArr);
     setCurrentPage(1);
-  }, [rows, searchTerm, selectedCandidates, selectedStatuses]);
+  }, [rows, searchTerm, selectedCandidates, selectedStatuses, selectedStatusKeys]);
 
   useEffect(() => {
     const totalPages = Math.ceil(filteredCandidates.length / candidatesPerPage);
@@ -191,11 +200,7 @@ function TicketDashboard() {
     for (let i = start; i < end; i++) {
       const [candidate, counts] = sortedFilteredCandidates[i];
       cells.push(
-        <div
-          key={candidate}
-          className="grid-cell"
-          style={{ animationDelay: `${(i - start) * 65}ms` }}
-        >
+        <div key={candidate} className="grid-cell" style={{ animationDelay: `${(i - start) * 65}ms` }}>
           <div className="candidate-name">{candidate}</div>
           <div className="ticket-counts">
             {selectedStatusKeys.includes("open") && (
@@ -321,7 +326,7 @@ function TicketDashboard() {
             })}
           </div>
 
-          <div style={{ minWidth: 180 }}>
+          <div style={{ minWidth: 170 }}>
             <Select
               closeMenuOnSelect={false}
               hideSelectedOptions={false}
@@ -344,7 +349,7 @@ function TicketDashboard() {
             />
           </div>
 
-          <div style={{ minWidth: 250 }}>
+          <div style={{ minWidth: 170 }}>
             <Select
               closeMenuOnSelect={false}
               hideSelectedOptions={false}
@@ -353,7 +358,7 @@ function TicketDashboard() {
               options={statusOptions}
               value={selectedStatuses}
               onChange={setSelectedStatuses}
-              placeholder="Select statuses to filter"
+              placeholder="Select statuses"
               styles={{
                 control: (base) => ({
                   ...base,
