@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import Select, { components } from "react-select";
 import "./TicketDashboard.css";
 
 const TICKET_RAISER_COL_ID = 4549002565209988;
 const STATUS_COL_ID = 3317549542100868;
 const ESCALATED_COL_ID = 6800802378895236;
-const candidatesPerPage = 24;
+const CANDIDATES_PER_PAGE = 24;
 
 const Option = (props) => (
   <components.Option {...props}>
@@ -20,8 +20,22 @@ const Option = (props) => (
   </components.Option>
 );
 
-// Hide selected tags/chips so that placeholder is always visible
-const MultiValueContainer = () => null;
+const { ValueContainer, Placeholder } = components;
+const CustomValueContainer = ({ children, ...props }) => (
+  <ValueContainer {...props}>
+    <Placeholder {...props}>{props.selectProps.placeholder}</Placeholder>
+    {React.Children.map(children, (child) =>
+      child && child.type !== Placeholder ? null : null
+    )}
+  </ValueContainer>
+);
+
+const selectStyles = {
+  multiValue: () => ({ display: "none" }),
+  multiValueLabel: () => ({ display: "none" }),
+  multiValueRemove: () => ({ display: "none" }),
+  menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+};
 
 function TicketDashboard() {
   const [rows, setRows] = useState([]);
@@ -43,27 +57,20 @@ function TicketDashboard() {
   useEffect(() => {
     fetch("http://localhost:5000/api/sheet")
       .then((res) => res.json())
-      .then((sheet) => {
-        if (sheet && sheet.rows) setRows(sheet.rows);
-        else setRows([]);
-      })
+      .then((data) => setRows(data?.rows || []))
       .catch(() => setRows([]));
   }, []);
 
-  const allCandidateNames = Array.from(
-    new Set(
-      rows
-        .map((row) =>
-          (row.cells.find((c) => c.columnId === TICKET_RAISER_COL_ID)?.value || "").trim()
-        )
-        .filter(Boolean)
-    )
-  );
+  const allCandidateNames = useMemo(() => {
+    const setNames = new Set();
+    rows.forEach((row) => {
+      const name = row.cells.find((c) => c.columnId === TICKET_RAISER_COL_ID)?.value?.trim();
+      if (name) setNames.add(name);
+    });
+    return Array.from(setNames);
+  }, [rows]);
 
-  const candidateOptions = allCandidateNames.map((name) => ({
-    value: name,
-    label: name,
-  }));
+  const candidateOptions = allCandidateNames.map((name) => ({ value: name, label: name }));
 
   const statusOptions = [
     { value: "open", label: "Open" },
@@ -73,118 +80,66 @@ function TicketDashboard() {
     { value: "unassigned", label: "Unassigned" },
   ];
 
-  // Decide which statuses are shown; if none selected, show all by default
-  const selectedStatusKeys = selectedStatuses.length
-    ? selectedStatuses.map((s) => s.value)
-    : ["open", "hold", "closed", "escalated", "unassigned"];
+  const selectedStatusKeys = useMemo(() => {
+    return selectedStatuses.length > 0 ? selectedStatuses.map((s) => s.value) : statusOptions.map((s) => s.value);
+  }, [selectedStatuses]);
 
   useEffect(() => {
+    // Filter rows by search term and selected candidates only
     const filteredRows = rows.filter((row) => {
-      const candidateNameRaw = (
-        row.cells.find((c) => c.columnId === TICKET_RAISER_COL_ID)?.value || ""
-      ).trim();
-      const candidateName = candidateNameRaw.toLowerCase();
+      const candidateRaw = row.cells.find((c) => c.columnId === TICKET_RAISER_COL_ID)?.value?.trim() || "";
+      const candidateLower = candidateRaw.toLowerCase();
 
-      const status = (
-        row.cells.find((c) => c.columnId === STATUS_COL_ID)?.value || ""
-      )
-        .toLowerCase()
-        .trim();
-      const escalatedFlag = (
-        row.cells.find((c) => c.columnId === ESCALATED_COL_ID)?.value || ""
-      )
-        .toLowerCase()
-        .trim();
+      if (searchTerm && !candidateLower.includes(searchTerm.toLowerCase())) return false;
+      if (selectedCandidates.length > 0 && !selectedCandidates.some((c) => c.value.toLowerCase() === candidateLower)) return false;
 
-      const searchMatch = candidateName.includes(searchTerm.toLowerCase());
-      const multiSelectMatch =
-        selectedCandidates.length === 0 ||
-        selectedCandidates.some((opt) => opt.value === candidateNameRaw);
-
-      const statusMatched =
-        selectedStatuses.length === 0 ||
-        selectedStatuses.some((s) => {
-          if (s.value === "escalated") return escalatedFlag === "escalated";
-          if (s.value === "hold") return status === "on hold" || status === "hold";
-          else return status === s.value;
-        });
-
-      return searchMatch && multiSelectMatch && statusMatched;
+      // Do not filter by status here
+      return true;
     });
 
-    const candidateMap = {};
+    const candidateCountMap = {};
     filteredRows.forEach((row) => {
-      const candidate = (
-        row.cells.find((c) => c.columnId === TICKET_RAISER_COL_ID)?.value || ""
-      ).trim();
+      const candidate = row.cells.find((c) => c.columnId === TICKET_RAISER_COL_ID)?.value?.trim();
       if (!candidate) return;
 
-      const status = (
-        row.cells.find((c) => c.columnId === STATUS_COL_ID)?.value || ""
-      )
-        .toLowerCase()
-        .trim();
-      const escalatedFlag = (
-        row.cells.find((c) => c.columnId === ESCALATED_COL_ID)?.value || ""
-      )
-        .toLowerCase()
-        .trim();
+      const status = (row.cells.find((c) => c.columnId === STATUS_COL_ID)?.value || "").toLowerCase().trim();
+      const escalatedFlag = (row.cells.find((c) => c.columnId === ESCALATED_COL_ID)?.value || "").toLowerCase().trim();
 
-      if (!candidateMap[candidate]) {
-        candidateMap[candidate] = {
-          open: 0,
-          hold: 0,
-          closed: 0,
-          escalated: 0,
-          unassigned: 0,
-        };
+      if (!candidateCountMap[candidate]) {
+        candidateCountMap[candidate] = { open: 0, hold: 0, closed: 0, escalated: 0, unassigned: 0 };
       }
 
-      if (status === "open") candidateMap[candidate].open++;
-      else if (status === "on hold") candidateMap[candidate].hold++;
-      else if (status === "closed") candidateMap[candidate].closed++;
-      else if (status === "unassigned" || status === "")
-        candidateMap[candidate].unassigned++;
-
-      if (escalatedFlag === "escalated") candidateMap[candidate].escalated++;
+      if (status === "open") candidateCountMap[candidate].open++;
+      else if (status === "hold" || status === "on hold") candidateCountMap[candidate].hold++;
+      else if (status === "closed") candidateCountMap[candidate].closed++;
+      else if (status === "unassigned" || status === "") candidateCountMap[candidate].unassigned++;
+      if (escalatedFlag === "escalated") candidateCountMap[candidate].escalated++;
     });
 
-    // Calculate totals for legend
-    let open = 0,
-      hold = 0,
-      closed = 0,
-      escalated = 0,
-      unassigned = 0;
-    Object.values(candidateMap).forEach((val) => {
-      open += val.open;
-      hold += val.hold;
-      closed += val.closed;
-      escalated += val.escalated;
-      unassigned += val.unassigned;
+    const sums = { open: 0, hold: 0, closed: 0, escalated: 0, unassigned: 0 };
+    Object.values(candidateCountMap).forEach((c) => {
+      sums.open += c.open;
+      sums.hold += c.hold;
+      sums.closed += c.closed;
+      sums.escalated += c.escalated;
+      sums.unassigned += c.unassigned;
     });
-    setOpenSum(open);
-    setHoldSum(hold);
-    setClosedSum(closed);
-    setEscalatedSum(escalated);
-    setUnassignedSum(unassigned);
 
-    // Filter candidates to only those with tickets in selected statuses
-    const filteredCandidatesArr = Object.entries(candidateMap).filter(([candidate, counts]) => {
-      let totalCount = 0;
-      if (selectedStatusKeys.includes("open")) totalCount += counts.open;
-      if (selectedStatusKeys.includes("hold")) totalCount += counts.hold;
-      if (selectedStatusKeys.includes("closed")) totalCount += counts.closed;
-      if (selectedStatusKeys.includes("escalated")) totalCount += counts.escalated;
-      if (selectedStatusKeys.includes("unassigned")) totalCount += counts.unassigned;
-      return totalCount > 0;
-    });
+    setOpenSum(sums.open);
+    setHoldSum(sums.hold);
+    setClosedSum(sums.closed);
+    setEscalatedSum(sums.escalated);
+    setUnassignedSum(sums.unassigned);
+
+    // Show all candidates regardless of ticket counts for selected statuses
+    const filteredCandidatesArr = Object.entries(candidateCountMap);
 
     setFilteredCandidates(filteredCandidatesArr);
     setCurrentPage(1);
   }, [rows, searchTerm, selectedCandidates, selectedStatuses, selectedStatusKeys]);
 
   useEffect(() => {
-    const totalPages = Math.ceil(filteredCandidates.length / candidatesPerPage);
+    const totalPages = Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE);
     if (currentPage > totalPages && totalPages > 0) setCurrentPage(1);
 
     const sortedFilteredCandidates = [...filteredCandidates].sort((a, b) => {
@@ -193,8 +148,8 @@ function TicketDashboard() {
       return 0;
     });
 
-    const start = (currentPage - 1) * candidatesPerPage;
-    const end = Math.min(start + candidatesPerPage, sortedFilteredCandidates.length);
+    const start = (currentPage - 1) * CANDIDATES_PER_PAGE;
+    const end = Math.min(start + CANDIDATES_PER_PAGE, sortedFilteredCandidates.length);
 
     const cells = [];
     for (let i = start; i < end; i++) {
@@ -203,22 +158,10 @@ function TicketDashboard() {
         <div key={candidate} className="grid-cell" style={{ animationDelay: `${(i - start) * 65}ms` }}>
           <div className="candidate-name">{candidate}</div>
           <div className="ticket-counts">
-            {selectedStatusKeys.includes("open") && (
-              <div className="count-box open">{counts.open}</div>
-            )}
-            {selectedStatusKeys.includes("hold") && (
-              <div className="count-box hold">{counts.hold}</div>
-            )}
-            {selectedStatusKeys.includes("closed") && (
-              <div className="count-box closed">{counts.closed}</div>
-            )}
-            {selectedStatusKeys.includes("escalated") && (
-              <div className="count-box escalated">{counts.escalated}</div>
-            )}
-            {/* Uncomment if you want to show unassigned card counts */}
-            {/* {selectedStatusKeys.includes("unassigned") && (
-              <div className="count-box unassigned">{counts.unassigned}</div>
-            )} */}
+            {selectedStatusKeys.includes("open") && <div className="count-box open">{counts.open}</div>}
+            {selectedStatusKeys.includes("hold") && <div className="count-box hold">{counts.hold}</div>}
+            {selectedStatusKeys.includes("closed") && <div className="count-box closed">{counts.closed}</div>}
+            {selectedStatusKeys.includes("escalated") && <div className="count-box escalated">{counts.escalated}</div>}
           </div>
         </div>
       );
@@ -227,27 +170,22 @@ function TicketDashboard() {
   }, [filteredCandidates, currentPage, sortOrder, selectedStatusKeys]);
 
   useEffect(() => {
-    const totalPages = Math.ceil(filteredCandidates.length / candidatesPerPage);
+    const totalPages = Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE);
+    if (totalPages <= 1) return;
+
     const interval = setInterval(() => {
       setCurrentPage((prev) => (prev >= totalPages ? 1 : prev + 1));
     }, 10000);
+
     return () => clearInterval(interval);
   }, [filteredCandidates]);
 
   return (
     <>
-      <div
-        className="dashboard-header-main"
-        style={{ maxWidth: 1300, margin: "0 auto 30px auto" }}
-      >
-        {/* Top row: logo, title, right icon */}
+      <div className="dashboard-header-main" style={{ maxWidth: 1300, margin: "0 auto 30px auto" }}>
         <div
           className="dashboard-header-top"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
+          style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
         >
           <img
             className="header-image"
@@ -269,24 +207,10 @@ function TicketDashboard() {
           >
             TICKET DASHBOARD
           </div>
-          <img
-            className="header-image"
-            src="/IT-LOGO.png"
-            alt="Right icon"
-            style={{ height: 70, width: "auto" }}
-          />
+          <img className="header-image" src="/IT-LOGO.png" alt="Right icon" style={{ height: 70, width: "auto" }} />
         </div>
 
-        {/* Second row: selects and filters */}
-        <div
-          className="dashboard-header-filters"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            marginTop: 20,
-          }}
-        >
+        <div className="dashboard-header-filters" style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 20, marginLeft: -70 }}>
           <div className="legend-bar" style={{ display: "flex", gap: 14 }}>
             {selectedStatusKeys.map((statusKey) => {
               switch (statusKey) {
@@ -326,69 +250,43 @@ function TicketDashboard() {
             })}
           </div>
 
-          <div style={{ minWidth: 170 }}>
+          <div style={{ minWidth: 210 }}>
             <Select
               closeMenuOnSelect={false}
               hideSelectedOptions={false}
-              components={{ Option, MultiValueContainer }}
+              components={{ Option, ValueContainer: CustomValueContainer }}
               isMulti
               options={candidateOptions}
               value={selectedCandidates}
               onChange={setSelectedCandidates}
               placeholder="Select persons"
-              styles={{
-                control: (base) => ({
-                  ...base,
-                  minHeight: 40,
-                  fontWeight: 700,
-                  borderRadius: 10,
-                }),
-                menu: (base) => ({ ...base, zIndex: 9999 }),
-                placeholder: (base) => ({ ...base, fontWeight: 700 }),
-              }}
+              styles={{ ...selectStyles, control: (base) => ({ ...base, minHeight: 40, fontWeight: 700, borderRadius: 10 }) }}
+              menuPortalTarget={document.body}
             />
           </div>
 
-          <div style={{ minWidth: 170 }}>
+          <div style={{ minWidth: 210 }}>
             <Select
               closeMenuOnSelect={false}
               hideSelectedOptions={false}
-              components={{ Option, MultiValueContainer }}
+              components={{ Option, ValueContainer: CustomValueContainer }}
               isMulti
               options={statusOptions}
               value={selectedStatuses}
               onChange={setSelectedStatuses}
               placeholder="Select statuses"
-              styles={{
-                control: (base) => ({
-                  ...base,
-                  minHeight: 40,
-                  fontWeight: 700,
-                  borderRadius: 10,
-                }),
-                menu: (base) => ({ ...base, zIndex: 9999 }),
-                placeholder: (base) => ({ ...base, fontWeight: 700 }),
-              }}
+              styles={{ ...selectStyles, control: (base) => ({ ...base, minHeight: 40, fontWeight: 700, borderRadius: 10 }) }}
+              menuPortalTarget={document.body}
             />
           </div>
 
           <select
             value={sortOrder}
             onChange={(e) => setSortOrder(e.target.value)}
-            style={{
-              height: 40,
-              width: 75,
-              fontWeight: 700,
-              borderRadius: 10,
-              padding: "0 8px",
-              fontSize: 16,
-              backgroundColor: "#fff",
-              border: "1px solid #ffc107",
-              color: "#8a6d00",
-            }}
+            style={{ height: 40, width: 75, borderRadius: 10 }}
           >
-            <option value="asc">Sort Ascending</option>
-            <option value="desc">Sort Descending</option>
+            <option value="asc">Asc</option>
+            <option value="desc">Desc</option>
           </select>
 
           <input
@@ -399,66 +297,85 @@ function TicketDashboard() {
               setSearchTerm(e.target.value);
               setCurrentPage(1);
             }}
-            style={{
-              width: 150,
-              padding: "6px 12px",
-              fontSize: 16,
-              fontWeight: 700,
-              borderRadius: 10,
-              border: "1px solid #ffc107",
-              boxShadow:
-                "0 6px 15px rgba(0, 0, 0, 0.11), inset 1px 1px 3px rgba(255,255,255,0.7), inset -1px -1px 3px rgba(180,180,180,0.6)",
-              textAlign: "center",
-              color: "#8a6d00",
-              backgroundColor: "#fff",
-              outline: "none",
-              transition: "border-color 0.3s ease",
-              marginLeft: 0,
-            }}
+            style={{ height: 40, width: 130, borderRadius: 10, padding: "0 12px" }}
           />
         </div>
-      </div>
 
-      <div className="grid-container">{gridCells}</div>
-
-      <div className="pagination-container">
-        <button
-          className="pagination-arrow"
-          onClick={() =>
-            setCurrentPage((prev) =>
-              prev > 1
-                ? prev - 1
-                : Math.ceil(filteredCandidates.length / candidatesPerPage)
-            )
-          }
+        <div
+          className="grid-container"
+          style={{
+            marginTop: 40,
+            display: "grid",
+            gap: "24px",
+            gridTemplateColumns: "repeat(6, 1fr)",
+            gridTemplateRows: "repeat(4, auto)",
+            maxWidth: 1400,
+            margin: "auto",
+          }}
         >
-          &lt;
-        </button>
+          {gridCells}
 
-        {Array.from({
-          length: Math.ceil(filteredCandidates.length / candidatesPerPage),
-        }).map((_, i) => (
-          <span
-            key={i}
-            className={`pagination-dot ${currentPage === i + 1 ? "active" : ""}`}
-            onClick={() => setCurrentPage(i + 1)}
+        </div>
+
+        <div className="pagination-container" style={{ marginTop: 20, textAlign: "center" }}>
+          <button
+            style={{
+              backgroundColor: "transparent",
+              border: "none",
+              fontSize: 24,
+              cursor: "pointer",
+              userSelect: "none",
+              padding: "0 8px",
+            }}
+            onClick={() =>
+              setCurrentPage((p) => (p > 1 ? p - 1 : Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE)))
+            }
+            aria-label="Previous page"
           >
-            &#9679;
-          </span>
-        ))}
+            {'<'}
+          </button>
 
-        <button
-          className="pagination-arrow"
-          onClick={() =>
-            setCurrentPage((prev) =>
-              prev < Math.ceil(filteredCandidates.length / candidatesPerPage)
-                ? prev + 1
-                : 1
-            )
-          }
-        >
-          &gt;
-        </button>
+          {[...Array(Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE)).keys()].map((i) => (
+            <span
+              key={i}
+              onClick={() => setCurrentPage(i + 1)}
+              style={{
+                display: "inline-block",
+                width: 12,
+                height: 12,
+                borderRadius: "50%",
+                margin: "0 6px",
+                backgroundColor: currentPage === i + 1 ? "#007bff" : "#888",
+                cursor: "pointer",
+                userSelect: "none",
+              }}
+              aria-label={`Page ${i + 1}`}
+              role="button"
+              tabIndex={0}
+              onKeyPress={(e) => {
+                if (e.key === "Enter") setCurrentPage(i + 1);
+              }}
+            />
+          ))}
+
+          <button
+            style={{
+              backgroundColor: "transparent",
+              border: "none",
+              fontSize: 24,
+              cursor: "pointer",
+              userSelect: "none",
+              padding: "0 8px",
+            }}
+            onClick={() =>
+              setCurrentPage((p) => (p < Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE) ? p + 1 : 1))
+            }
+            aria-label="Next page"
+          >
+            {'>'}
+          </button>
+        </div>
+
       </div>
     </>
   );
