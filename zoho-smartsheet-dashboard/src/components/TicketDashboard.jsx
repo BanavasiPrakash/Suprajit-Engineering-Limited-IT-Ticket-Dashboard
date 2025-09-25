@@ -3,19 +3,18 @@ import Select, { components } from "react-select";
 import "./TicketDashboard.css";
 
 const TICKET_RAISER_COL_ID = 4549002565209988;
-const STATUS_COL_ID = 3317549542100868;
-const ESCALATED_COL_ID = 6800802378895236;
+const OPEN_STATUS_COL_ID = 1001;
+const CLOSED_STATUS_COL_ID = 1002;
+const HOLD_STATUS_COL_ID = 1003;
+const ESCALATED_STATUS_COL_ID = 1004;
+const UNASSIGNED_STATUS_COL_ID = 1005;
+const IN_PROGRESS_STATUS_COL_ID = 1006;
+
 const CANDIDATES_PER_PAGE = 24;
 
 const Option = (props) => (
   <components.Option {...props}>
-    <input
-      type="checkbox"
-      checked={props.isSelected}
-      readOnly
-      style={{ marginRight: 8 }}
-      tabIndex={-1}
-    />
+    <input type="checkbox" checked={props.isSelected} readOnly style={{ marginRight: 8 }} tabIndex={-1} />
     {props.label}
   </components.Option>
 );
@@ -24,9 +23,7 @@ const { ValueContainer, Placeholder } = components;
 const CustomValueContainer = ({ children, ...props }) => (
   <ValueContainer {...props}>
     <Placeholder {...props}>{props.selectProps.placeholder}</Placeholder>
-    {React.Children.map(children, (child) =>
-      child && child.type !== Placeholder ? null : null
-    )}
+    {React.Children.map(children, (child) => (child && child.type !== Placeholder ? null : null))}
   </ValueContainer>
 );
 
@@ -37,8 +34,41 @@ const selectStyles = {
   menuPortal: (base) => ({ ...base, zIndex: 9999 }),
 };
 
+async function fetchZohoDataFromBackend(setRows, setError) {
+  try {
+    const response = await fetch("http://localhost:5000/api/zoho-members-with-ticket-counts");
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch Zoho members with ticket status counts");
+    }
+
+    const data = await response.json();
+
+    console.log("Fetched data from backend:", data);
+
+    const rows = data.map(member => ({
+      cells: [
+        { columnId: TICKET_RAISER_COL_ID, value: member.name },
+        { columnId: OPEN_STATUS_COL_ID, value: member.tickets.open.toString() },
+        { columnId: CLOSED_STATUS_COL_ID, value: member.tickets.closed.toString() },
+        { columnId: HOLD_STATUS_COL_ID, value: member.tickets.hold.toString() },
+        { columnId: ESCALATED_STATUS_COL_ID, value: member.tickets.escalated.toString() },
+        { columnId: UNASSIGNED_STATUS_COL_ID, value: member.tickets.unassigned.toString() },
+        { columnId: IN_PROGRESS_STATUS_COL_ID, value: (member.tickets.inProgress || 0).toString() },
+      ],
+    }));
+
+    setRows(rows);
+    localStorage.setItem("ticketDashboardRows", JSON.stringify(rows));
+    setError(null);
+  } catch (error) {
+    setError(error.message);
+  }
+}
+
 function TicketDashboard() {
   const [rows, setRows] = useState([]);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCandidates, setSelectedCandidates] = useState([]);
   const [selectedStatuses, setSelectedStatuses] = useState([]);
@@ -46,19 +76,21 @@ function TicketDashboard() {
   const [sortOrder, setSortOrder] = useState("asc");
 
   const [openSum, setOpenSum] = useState(0);
-  const [holdSum, setHoldSum] = useState(0);
   const [closedSum, setClosedSum] = useState(0);
+  const [holdSum, setHoldSum] = useState(0);
   const [escalatedSum, setEscalatedSum] = useState(0);
   const [unassignedSum, setUnassignedSum] = useState(0);
+  const [inProgressSum, setInProgressSum] = useState(0);
 
   const [filteredCandidates, setFilteredCandidates] = useState([]);
   const [gridCells, setGridCells] = useState([]);
 
   useEffect(() => {
-    fetch("http://localhost:5000/api/sheet")
-      .then((res) => res.json())
-      .then((data) => setRows(data?.rows || []))
-      .catch(() => setRows([]));
+    const cachedRows = localStorage.getItem("ticketDashboardRows");
+    if (cachedRows) {
+      setRows(JSON.parse(cachedRows));
+    }
+    fetchZohoDataFromBackend(setRows, setError);
   }, []);
 
   const allCandidateNames = useMemo(() => {
@@ -78,6 +110,7 @@ function TicketDashboard() {
     { value: "hold", label: "Hold" },
     { value: "escalated", label: "Escalated" },
     { value: "unassigned", label: "Unassigned" },
+    { value: "inProgress", label: "In Progress" },
   ];
 
   const selectedStatusKeys = useMemo(() => {
@@ -85,7 +118,6 @@ function TicketDashboard() {
   }, [selectedStatuses]);
 
   useEffect(() => {
-    // Filter rows by search term and selected candidates only
     const filteredRows = rows.filter((row) => {
       const candidateRaw = row.cells.find((c) => c.columnId === TICKET_RAISER_COL_ID)?.value?.trim() || "";
       const candidateLower = candidateRaw.toLowerCase();
@@ -93,7 +125,6 @@ function TicketDashboard() {
       if (searchTerm && !candidateLower.includes(searchTerm.toLowerCase())) return false;
       if (selectedCandidates.length > 0 && !selectedCandidates.some((c) => c.value.toLowerCase() === candidateLower)) return false;
 
-      // Do not filter by status here
       return true;
     });
 
@@ -102,27 +133,31 @@ function TicketDashboard() {
       const candidate = row.cells.find((c) => c.columnId === TICKET_RAISER_COL_ID)?.value?.trim();
       if (!candidate) return;
 
-      const status = (row.cells.find((c) => c.columnId === STATUS_COL_ID)?.value || "").toLowerCase().trim();
-      const escalatedFlag = (row.cells.find((c) => c.columnId === ESCALATED_COL_ID)?.value || "").toLowerCase().trim();
+      const cellsById = row.cells.reduce((acc, cell) => {
+        acc[cell.columnId] = Number(cell.value) || 0;
+        return acc;
+      }, {});
 
       if (!candidateCountMap[candidate]) {
-        candidateCountMap[candidate] = { open: 0, hold: 0, closed: 0, escalated: 0, unassigned: 0 };
+        candidateCountMap[candidate] = { open: 0, hold: 0, closed: 0, escalated: 0, unassigned: 0, inProgress: 0 };
       }
 
-      if (status === "open") candidateCountMap[candidate].open++;
-      else if (status === "hold" || status === "on hold") candidateCountMap[candidate].hold++;
-      else if (status === "closed") candidateCountMap[candidate].closed++;
-      else if (status === "unassigned" || status === "") candidateCountMap[candidate].unassigned++;
-      if (escalatedFlag === "escalated") candidateCountMap[candidate].escalated++;
+      if (selectedStatusKeys.includes("open")) candidateCountMap[candidate].open += cellsById[OPEN_STATUS_COL_ID];
+      if (selectedStatusKeys.includes("closed")) candidateCountMap[candidate].closed += cellsById[CLOSED_STATUS_COL_ID];
+      if (selectedStatusKeys.includes("hold")) candidateCountMap[candidate].hold += cellsById[HOLD_STATUS_COL_ID];
+      if (selectedStatusKeys.includes("escalated")) candidateCountMap[candidate].escalated += cellsById[ESCALATED_STATUS_COL_ID];
+      if (selectedStatusKeys.includes("unassigned")) candidateCountMap[candidate].unassigned += cellsById[UNASSIGNED_STATUS_COL_ID];
+      if (selectedStatusKeys.includes("inProgress")) candidateCountMap[candidate].inProgress += cellsById[IN_PROGRESS_STATUS_COL_ID];
     });
 
-    const sums = { open: 0, hold: 0, closed: 0, escalated: 0, unassigned: 0 };
+    const sums = { open: 0, hold: 0, closed: 0, escalated: 0, unassigned: 0, inProgress: 0 };
     Object.values(candidateCountMap).forEach((c) => {
       sums.open += c.open;
       sums.hold += c.hold;
       sums.closed += c.closed;
       sums.escalated += c.escalated;
       sums.unassigned += c.unassigned;
+      sums.inProgress += c.inProgress;
     });
 
     setOpenSum(sums.open);
@@ -130,8 +165,8 @@ function TicketDashboard() {
     setClosedSum(sums.closed);
     setEscalatedSum(sums.escalated);
     setUnassignedSum(sums.unassigned);
+    setInProgressSum(sums.inProgress);
 
-    // Show all candidates regardless of ticket counts for selected statuses
     const filteredCandidatesArr = Object.entries(candidateCountMap);
 
     setFilteredCandidates(filteredCandidatesArr);
@@ -162,6 +197,8 @@ function TicketDashboard() {
             {selectedStatusKeys.includes("hold") && <div className="count-box hold">{counts.hold}</div>}
             {selectedStatusKeys.includes("closed") && <div className="count-box closed">{counts.closed}</div>}
             {selectedStatusKeys.includes("escalated") && <div className="count-box escalated">{counts.escalated}</div>}
+            {selectedStatusKeys.includes("unassigned") && <div className="count-box unassigned">{counts.unassigned}</div>}
+            {selectedStatusKeys.includes("inProgress") && <div className="count-box inprogress">{counts.inProgress}</div>}
           </div>
         </div>
       );
@@ -170,11 +207,10 @@ function TicketDashboard() {
   }, [filteredCandidates, currentPage, sortOrder, selectedStatusKeys]);
 
   useEffect(() => {
-    const totalPages = Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE);
-    if (totalPages <= 1) return;
+    if (filteredCandidates.length <= CANDIDATES_PER_PAGE) return;
 
     const interval = setInterval(() => {
-      setCurrentPage((prev) => (prev >= totalPages ? 1 : prev + 1));
+      setCurrentPage((prev) => (prev >= Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE) ? 1 : prev + 1));
     }, 10000);
 
     return () => clearInterval(interval);
@@ -183,16 +219,8 @@ function TicketDashboard() {
   return (
     <>
       <div className="dashboard-header-main" style={{ maxWidth: 1300, margin: "0 auto 30px auto" }}>
-        <div
-          className="dashboard-header-top"
-          style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
-        >
-          <img
-            className="header-image"
-            src="/suprajit_logo_BG.png"
-            alt="Left icon"
-            style={{ height: 80, width: "auto" }}
-          />
+        <div className="dashboard-header-top" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <img className="header-image" src="/suprajit_logo_BG.png" alt="Left icon" style={{ height: 80, width: "auto" }} />
           <div
             className="dashboard-title-container"
             style={{
@@ -210,7 +238,7 @@ function TicketDashboard() {
           <img className="header-image" src="/IT-LOGO.png" alt="Right icon" style={{ height: 70, width: "auto" }} />
         </div>
 
-        <div className="dashboard-header-filters" style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 20, marginLeft: -70 }}>
+        <div className="dashboard-header-filters" style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10, marginLeft: -40 }}>
           <div className="legend-bar" style={{ display: "flex", gap: 14 }}>
             {selectedStatusKeys.map((statusKey) => {
               switch (statusKey) {
@@ -242,6 +270,12 @@ function TicketDashboard() {
                   return (
                     <div className="legend-item unassigned" key="legend-unassigned">
                       UNASSIGNED <span>{unassignedSum.toString().padStart(3, "0")}</span>
+                    </div>
+                  );
+                case "inProgress":
+                  return (
+                    <div className="legend-item inprogress" key="legend-inprogress">
+                      IN PROGRESS <span>{inProgressSum.toString().padStart(3, "0")}</span>
                     </div>
                   );
                 default:
@@ -301,20 +335,25 @@ function TicketDashboard() {
           />
         </div>
 
+        {error && (
+          <div style={{ color: "red", fontWeight: "bold", marginTop: 10, marginBottom: 10 }}>
+            {error}
+          </div>
+        )}
+
         <div
           className="grid-container"
           style={{
-            marginTop: 40,
+            marginTop: 40 ,
             display: "grid",
             gap: "24px",
             gridTemplateColumns: "repeat(6, 1fr)",
             gridTemplateRows: "repeat(4, auto)",
             maxWidth: 1400,
-            margin: "auto",
+            // margin: "auto",
           }}
         >
           {gridCells}
-
         </div>
 
         <div className="pagination-container" style={{ marginTop: 20, textAlign: "center" }}>
@@ -327,9 +366,7 @@ function TicketDashboard() {
               userSelect: "none",
               padding: "0 8px",
             }}
-            onClick={() =>
-              setCurrentPage((p) => (p > 1 ? p - 1 : Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE)))
-            }
+            onClick={() => setCurrentPage((p) => (p > 1 ? p - 1 : Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE)))}
             aria-label="Previous page"
           >
             {'<'}
@@ -367,15 +404,21 @@ function TicketDashboard() {
               userSelect: "none",
               padding: "0 8px",
             }}
-            onClick={() =>
-              setCurrentPage((p) => (p < Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE) ? p + 1 : 1))
-            }
+            onClick={() => setCurrentPage((p) => (p < Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE) ? p + 1 : 1))}
             aria-label="Next page"
           >
             {'>'}
           </button>
         </div>
+      </div>
 
+      <div>
+        <h3>Raw Rows Data for Debugging</h3>
+        {rows.map((row, index) => (
+          <pre key={index} style={{ fontSize: 10, whiteSpace: "pre-wrap" }}>
+            {JSON.stringify(row, null, 2)}
+          </pre>
+        ))}
       </div>
     </>
   );
