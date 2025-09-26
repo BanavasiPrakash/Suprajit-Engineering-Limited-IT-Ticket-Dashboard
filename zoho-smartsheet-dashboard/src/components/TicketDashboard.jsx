@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import Select, { components } from "react-select";
-import { FaSearch } from "react-icons/fa";
+import { FaBars } from "react-icons/fa";
 import "./TicketDashboard.css";
 
 const ASSIGNEE_COL_ID = 4549002565209988;
@@ -26,17 +26,27 @@ const Option = (props) => (
   </components.Option>
 );
 
-const { ValueContainer, Placeholder } = components;
-const CustomValueContainer = ({ children, ...props }) => (
-  <ValueContainer {...props}>
-    <Placeholder {...props}>{props.selectProps.placeholder}</Placeholder>
-    {React.Children.map(children, (child) =>
-      child && child.type !== Placeholder ? null : null
-    )}
-  </ValueContainer>
-);
-
 const selectStyles = {
+  control: (base) => ({
+    ...base,
+    minWidth: 100,
+    maxWidth: 200,
+    height: 40,
+    background: "linear-gradient(145deg, #d0daf9, #a3baff)", // keep your original
+    borderRadius: 18,
+    border: "1px solid #5e7ce4",
+    boxShadow:
+      "8px 8px 28px rgba(63,81,181,0.8), inset 6px 6px 14px #fff, inset -6px -6px 14px rgba(48,62,142,0.85)",
+    fontWeight: 700,
+    fontSize: 14,
+    textTransform: "uppercase",
+    fontFamily: "'Poppins',sans-serif",
+    padding: "0 1px", // slightly reduce padding as well if needed
+  }),
+  valueContainer: (base) => ({
+    ...base,
+    paddingRight: 0,
+  }),
   multiValue: () => ({ display: "none" }),
   multiValueLabel: () => ({ display: "none" }),
   multiValueRemove: () => ({ display: "none" }),
@@ -45,14 +55,11 @@ const selectStyles = {
 
 async function fetchZohoDataFromBackend(setRows, setError) {
   try {
-    let url = "http://localhost:5000/api/zoho-assignees-with-ticket-counts";
-
+    const url = "http://localhost:5000/api/zoho-assignees-with-ticket-counts";
     const response = await fetch(url);
-
     if (!response.ok) {
       throw new Error("Failed to fetch Zoho assignee ticket counts");
     }
-
     const data = await response.json();
 
     const rows = data.map((member) => ({
@@ -61,18 +68,9 @@ async function fetchZohoDataFromBackend(setRows, setError) {
         { columnId: OPEN_STATUS_COL_ID, value: member.tickets.open?.toString() || "0" },
         { columnId: CLOSED_STATUS_COL_ID, value: member.tickets.closed?.toString() || "0" },
         { columnId: HOLD_STATUS_COL_ID, value: member.tickets.hold?.toString() || "0" },
-        {
-          columnId: ESCALATED_STATUS_COL_ID,
-          value: member.tickets.escalated?.toString() || "0",
-        },
-        {
-          columnId: UNASSIGNED_STATUS_COL_ID,
-          value: member.tickets.unassigned?.toString() || "0",
-        },
-        {
-          columnId: IN_PROGRESS_STATUS_COL_ID,
-          value: member.tickets.inProgress?.toString() || "0",
-        },
+        { columnId: ESCALATED_STATUS_COL_ID, value: member.tickets.escalated?.toString() || "0" },
+        { columnId: UNASSIGNED_STATUS_COL_ID, value: member.tickets.unassigned?.toString() || "0" },
+        { columnId: IN_PROGRESS_STATUS_COL_ID, value: member.tickets.inProgress?.toString() || "0" },
       ],
     }));
 
@@ -92,16 +90,15 @@ function TicketDashboard() {
   const [selectedStatuses, setSelectedStatuses] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortOrder, setSortOrder] = useState("asc");
-
   const [openSum, setOpenSum] = useState(0);
   const [closedSum, setClosedSum] = useState(0);
   const [holdSum, setHoldSum] = useState(0);
   const [escalatedSum, setEscalatedSum] = useState(0);
   const [unassignedSum, setUnassignedSum] = useState(0);
   const [inProgressSum, setInProgressSum] = useState(0);
-
   const [filteredCandidates, setFilteredCandidates] = useState([]);
   const [gridCells, setGridCells] = useState([]);
+  const [filtersVisible, setFiltersVisible] = useState(true);
 
   useEffect(() => {
     const cachedRows = localStorage.getItem("ticketDashboardRows");
@@ -114,9 +111,9 @@ function TicketDashboard() {
   const nonZeroRows = useMemo(() => {
     return rows.filter((row) => {
       const ticketCounts = row.cells
-        .filter(c => c.columnId !== ASSIGNEE_COL_ID)
-        .map(c => Number(c.value) || 0);
-      return ticketCounts.some(count => count > 0);
+        .filter((c) => c.columnId !== ASSIGNEE_COL_ID)
+        .map((c) => Number(c.value) || 0);
+      return ticketCounts.some((count) => count > 0);
     });
   }, [rows]);
 
@@ -140,15 +137,17 @@ function TicketDashboard() {
     { value: "closed", label: "Closed" },
   ];
 
-  const selectedStatusKeys = useMemo(() => {
-    return selectedStatuses.length > 0
-      ? selectedStatuses.map((s) => s.value)
-      : statusOptions.map((s) => s.value);
-  }, [selectedStatuses]);
+  const selectedStatusKeys = useMemo(
+    () =>
+      selectedStatuses.length > 0
+        ? selectedStatuses.map((s) => s.value)
+        : statusOptions.map((s) => s.value),
+    [selectedStatuses]
+  );
 
   const personFilterOption = (option, inputValue) => {
     if (!inputValue) return true;
-    if (selectedCandidates.find(sel => sel.value === option.value)) return true;
+    if (selectedCandidates.find((sel) => sel.value === option.value)) return true;
     return option.label.toLowerCase().includes(inputValue.toLowerCase());
   };
 
@@ -163,7 +162,6 @@ function TicketDashboard() {
         !selectedCandidates.some((c) => c.value.toLowerCase() === candidateLower)
       )
         return false;
-
       return true;
     });
 
@@ -289,19 +287,46 @@ function TicketDashboard() {
           >
             TICKET DASHBOARD
           </div>
-          <img
-            className="header-image"
-            src="/IT-LOGO.png"
-            alt="Right icon"
-            style={{ height: 70, width: "auto" }}
-          />
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10 }}>
+            <img
+              className="header-image"
+              src="/IT-LOGO.png"
+              alt="Right icon"
+              style={{ height: 70, width: "auto" }}
+            />
+            <button
+              className="hamburger-btn"
+              style={{
+                marginTop: 5,
+                width: 25,
+                height: 25,
+                borderRadius: 10,
+                border: "none",
+                // background: "#fff",
+                // boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+                cursor: "pointer"
+              }}
+              onClick={() => setFiltersVisible((v) => !v)}
+              aria-label="Toggle filters"
+            >
+              <FaBars size={15} color="#34495e" />
+            </button>
+          </div>
         </div>
 
         <div
           className="dashboard-header-filters"
-          style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10, marginLeft: -40 }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 2,
+            marginTop: 10,
+            marginLeft: -2,
+            justifyContent: "flex-end", // push to right
+            width: "100%"
+          }}
         >
-          <div className="legend-bar" style={{ display: "flex", gap: 14 }}>
+          <div className="legend-bar" style={{ display: "flex", gap: 2 }}>
             <div className="legend-item open">
               OPEN <span>{openSum.toString().padStart(3, "0")}</span>
             </div>
@@ -322,86 +347,59 @@ function TicketDashboard() {
             </div>
           </div>
 
-          <div style={{ minWidth: 210 }}>
-            <Select
-              closeMenuOnSelect={false}
-              hideSelectedOptions={false}
-              components={{ Option, ValueContainer: CustomValueContainer }}
-              isMulti
-              options={candidateOptions}
-              value={selectedCandidates}
-              onChange={setSelectedCandidates}
-              placeholder="Select persons"
-              styles={{
-                ...selectStyles,
-                control: (base) => ({ ...base, minHeight: 40, fontWeight: 700, borderRadius: 10 }),
-              }}
-              menuPortalTarget={document.body}
-              filterOption={(option, input) => {
-                if (!input) return true;
-                if (selectedCandidates.some(sel => sel.value === option.value)) return true;
-                return option.label.toLowerCase().includes(input.toLowerCase());
-              }}
-              isSearchable={true}
-            />
+          <div style={{ display: filtersVisible ? "flex" : "none", alignItems: "center", gap: 2 }}>
+            <div style={{ minWidth: 210 }}>
+              <Select
+                closeMenuOnSelect={false}
+                hideSelectedOptions={false}
+                components={{ Option }}
+                isMulti
+                options={candidateOptions}
+                value={selectedCandidates}
+                onChange={setSelectedCandidates}
+                placeholder="Search persons"
+                styles={selectStyles}
+                menuPortalTarget={document.body}
+                filterOption={personFilterOption}
+                isSearchable
+                menuPlacement="auto"
+                maxMenuHeight={240}
+              />
+            </div>
+
+            <div style={{ minWidth: 210 }}>
+              <Select
+                closeMenuOnSelect={false}
+                hideSelectedOptions={false}
+                components={{ Option }}
+                isMulti
+                options={statusOptions}
+                value={selectedStatuses}
+                onChange={setSelectedStatuses}
+                placeholder="Select statuses"
+                styles={selectStyles}
+                menuPortalTarget={document.body}
+              />
+            </div>
+
+            <select
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value)}
+              style={{ height: 40, width: 20, borderRadius: 10 }}
+            >
+              <option value="asc">Asc</option>
+              <option value="desc">Desc</option>
+            </select>
+            {/* SEARCH BUTTON REMOVED */}
           </div>
-
-          <div style={{ minWidth: 210 }}>
-            <Select
-              closeMenuOnSelect={false}
-              hideSelectedOptions={false}
-              components={{ Option, ValueContainer: CustomValueContainer }}
-              isMulti
-              options={statusOptions}
-              value={selectedStatuses}
-              onChange={setSelectedStatuses}
-              placeholder="Select statuses"
-              styles={{
-                ...selectStyles,
-                control: (base) => ({ ...base, minHeight: 40, fontWeight: 700, borderRadius: 10 }),
-              }}
-              menuPortalTarget={document.body}
-            />
-          </div>
-
-          <select
-            value={sortOrder}
-            onChange={(e) => setSortOrder(e.target.value)}
-            style={{ height: 40, width: 75, borderRadius: 10 }}
-          >
-            <option value="asc">Asc</option>
-            <option value="desc">Desc</option>
-          </select>
-
-          <button
-            type="button"
-            aria-label="Search candidate"
-            style={{
-              height: 40,
-              width: 40,
-              borderRadius: 10,
-              background: "#fff",
-              border: "1px solid #ccc",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              marginLeft: 8,
-            }}
-            onClick={() => {
-              // Optional: focus some input if you have one or trigger search
-            }}
-          >
-            <FaSearch />
-          </button>
         </div>
 
         <div
           className="grid-container"
           style={{
-            marginTop: 40,
+            marginTop: 30,
             display: "grid",
-            gap: "24px",
+            gap: "18px",
             gridTemplateColumns: "repeat(6, 1fr)",
             gridTemplateRows: "repeat(4, auto)",
             maxWidth: 1400,
@@ -420,34 +418,40 @@ function TicketDashboard() {
               userSelect: "none",
               padding: "0 8px",
             }}
-            onClick={() => setCurrentPage((p) => (p > 1 ? p - 1 : Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE)))}
+            onClick={() =>
+              setCurrentPage((p) =>
+                p > 1 ? p - 1 : Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE)
+              )
+            }
             aria-label="Previous page"
           >
             {'<'}
           </button>
 
-          {[...Array(Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE)).keys()].map((i) => (
-            <span
-              key={i}
-              onClick={() => setCurrentPage(i + 1)}
-              style={{
-                display: "inline-block",
-                width: 12,
-                height: 12,
-                borderRadius: "50%",
-                margin: "0 6px",
-                backgroundColor: currentPage === i + 1 ? "#007bff" : "#888",
-                cursor: "pointer",
-                userSelect: "none",
-              }}
-              aria-label={`Page ${i + 1}`}
-              role="button"
-              tabIndex={0}
-              onKeyPress={(e) => {
-                if (e.key === "Enter") setCurrentPage(i + 1);
-              }}
-            />
-          ))}
+          {[...Array(Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE)).keys()].map(
+            (i) => (
+              <span
+                key={i}
+                onClick={() => setCurrentPage(i + 1)}
+                style={{
+                  display: "inline-block",
+                  width: 12,
+                  height: 12,
+                  borderRadius: "50%",
+                  margin: "0 6px",
+                  backgroundColor: currentPage === i + 1 ? "#007bff" : "#888",
+                  cursor: "pointer",
+                  userSelect: "none",
+                }}
+                aria-label={`Page ${i + 1}`}
+                role="button"
+                tabIndex={0}
+                onKeyPress={(e) => {
+                  if (e.key === "Enter") setCurrentPage(i + 1);
+                }}
+              />
+            )
+          )}
 
           <button
             style={{
@@ -458,7 +462,11 @@ function TicketDashboard() {
               userSelect: "none",
               padding: "0 8px",
             }}
-            onClick={() => setCurrentPage((p) => (p < Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE) ? p + 1 : 1))}
+            onClick={() =>
+              setCurrentPage((p) =>
+                p < Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE) ? p + 1 : 1
+              )
+            }
             aria-label="Next page"
           >
             {'>'}
