@@ -9,7 +9,7 @@
   justify-content: space-between;
   width: 100%;
   max-width: 1300px;
-  margin: 0 auto 30px auto;
+  margin: 0 auto 40px auto;
   gap: 20px;
 }
 
@@ -29,37 +29,38 @@
 }
 
 /* Horizontal legend boxes below the left logo */
-.legend-bar {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(250px, 1fr)); /* Try 170px or even 180px */
-  gap: 14px;
-  width: 100%;
+/* Container row that holds the legend bar, centered in the layout */
+.legend-bar-row {
+  display: flex;
+  justify-content: center;    /* Horizontally center contents */
+  max-width: 1400px;          /* Match main container width */
+  margin: 0 auto;             /* Center container within page */
+  width: 100%;                /* Responsive container width */
 }
 
-.legend-item {
-  min-width: 0;
-  width: 100%;
-  max-width: 100%;
-  text-align: center;
-  height: 36px;
+/* Inner legend bar holds individual status boxes */
+.legend-bar {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #fff;
-  border-radius: 10px;
-  font-weight: 900;
-  font-size: 14px;
-  text-transform: uppercase;
-  font-family: 'Poppins', sans-serif;
-  box-shadow:
-    0 6px 15px rgba(0, 0, 0, 0.11),
-    inset 1px 1px 3px rgba(255, 255, 255, 0.7),
-    inset -1px -1px 3px rgba(180, 180, 180, 0.6);
-  white-space: nowrap;          /* FORCE SINGLE LINE */
-  overflow: hidden;             /* Prevent overflow */
-  text-overflow: ellipsis;      /* Optional: show ... if truly too small */
-  padding: 0 2px;
+  gap: 12px;                  /* Equal spacing between items */
 }
+
+/* Each legend item is fixed width and styled */
+.legend-item {
+  width: auto;               /* Fixed width matching select buttons */
+  text-align: center;
+  padding: 7px 10px;
+  border-radius: 17px;
+  font-weight: bold;
+  background: linear-gradient(140deg, #d0daf9, #a3baff 89%);
+  box-shadow:
+    2px 3px 16px 0 rgba(0, 0, 0, 0.18),
+    0 0 2px #fff inset,
+    0 0 3px #6169e1 inset;
+  /* Add color variants via .open, .hold, etc. classes as needed */
+}
+
+
+
 
 
 
@@ -95,10 +96,11 @@
 }
 
 .legend-item span {
-  font-weight: bold;
-  margin-left: 7px;
-  font-size: 19px;
+  margin-left: 10px;
+  font-size: 22px;
+  font-weight: 800;
 }
+
 
 .header-center {
   display: flex;
@@ -419,7 +421,7 @@
 }
 
 
-/* Hamburger button style */
+Hamburger button style
 .hamburger-btn {
   transition: background-color 0.2s;
 }
@@ -447,3 +449,13 @@
 }
 
 /* All other previous styles (legend bar, grid cell, select etc.) remain unchanged */
+.dashboard-header-filters {
+  display: flex;
+  justify-content: flex-end; /* Move the legend to the right */
+  align-items: center;
+  width: 100%;
+}
+
+
+
+

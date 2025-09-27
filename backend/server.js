@@ -151,7 +151,8 @@ app.get("/api/zoho-assignees-with-ticket-counts", async (req, res) => {
     });
 
     tickets.forEach((ticket) => {
-      const assigneeId = ticket.assigneeId || "unassigned";
+      const assigneeId = (ticket.assigneeId || ticket.assigneeId == "None") ? ticket.assigneeId : "unassigned";
+
 
       if (!ticketStatusCountMap[assigneeId]) {
         ticketStatusCountMap[assigneeId] = {
