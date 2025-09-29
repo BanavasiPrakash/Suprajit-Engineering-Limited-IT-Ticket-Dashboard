@@ -11,8 +11,7 @@ app.use(cors());
 
 const clientId = "1000.VEPAX9T8TKDWJZZD95XT6NN52PRPQY";
 const clientSecret = "acca291b89430180ced19660cd28ad8ce1e4bec6e8";
-const refreshToken =
-  "1000.465100d543b8d9471507bdf0b0263414.608f3f3817d11b09f142fd29810cca6f";
+const refreshToken = "1000.465100d543b8d9471507bdf0b0263414.608f3f3817d11b09f142fd29810cca6f";
 
 let cachedAccessToken = null;
 let accessTokenExpiry = null;
@@ -139,20 +138,40 @@ app.get("/api/zoho-assignees-with-ticket-counts", async (req, res) => {
     }
 
     const ticketStatusCountMap = {};
+    const latestUnassignedTicketIdMap = {};
+
     users.forEach((user) => {
       ticketStatusCountMap[user.id] = {
         open: 0,
         closed: 0,
         hold: 0,
         escalated: 0,
-        unassigned: 0,  // Will not be used but kept for consistency
+        unassigned: 0,
         inProgress: 0,
       };
+      latestUnassignedTicketIdMap[user.id] = null;
     });
 
-    tickets.forEach((ticket) => {
-      const assigneeId = (ticket.assigneeId || ticket.assigneeId == "None") ? ticket.assigneeId : "unassigned";
+    ticketStatusCountMap["unassigned"] = {
+      open: 0,
+      closed: 0,
+      hold: 0,
+      escalated: 0,
+      unassigned: 0,
+      inProgress: 0,
+    };
+    latestUnassignedTicketIdMap["unassigned"] = null;
 
+    tickets.forEach((ticket) => {
+      const assigneeRaw =
+        ticket.assigneeId === undefined || ticket.assigneeId === null
+          ? ""
+          : ticket.assigneeId.toString().toLowerCase();
+
+      const isUnassignedAssignee =
+        assigneeRaw === "" || assigneeRaw === "none" || assigneeRaw === "null";
+
+      const assigneeId = isUnassignedAssignee ? "unassigned" : ticket.assigneeId;
 
       if (!ticketStatusCountMap[assigneeId]) {
         ticketStatusCountMap[assigneeId] = {
@@ -163,6 +182,21 @@ app.get("/api/zoho-assignees-with-ticket-counts", async (req, res) => {
           unassigned: 0,
           inProgress: 0,
         };
+        latestUnassignedTicketIdMap[assigneeId] = null;
+      }
+
+      // Track latest unassigned ticket ID if unassigned
+      if (isUnassignedAssignee || (ticket.status && ticket.status.toLowerCase() === "unassigned")) {
+        const currentTicketNumber = ticket.ticketNumber || ticket.id;
+        const currentLatest = latestUnassignedTicketIdMap[assigneeId];
+        // Assuming ticketNumber is numeric increasing, adjust if string
+        if (
+          currentLatest === null ||
+          (typeof currentLatest === "number" && currentTicketNumber > currentLatest) ||
+          (typeof currentLatest === "string" && currentTicketNumber.localeCompare(currentLatest) > 0)
+        ) {
+          latestUnassignedTicketIdMap[assigneeId] = currentTicketNumber;
+        }
       }
 
       const rawStatus = (ticket.status || "").toLowerCase();
@@ -170,8 +204,9 @@ app.get("/api/zoho-assignees-with-ticket-counts", async (req, res) => {
 
       const isEscalated = ticket.isEscalated === true || String(ticket.escalated).toLowerCase() === "true";
 
-      // Map unassigned status tickets into escalated
-      if (normalizedStatus === "unassigned" || isEscalated) {
+      if (isUnassignedAssignee) {
+        ticketStatusCountMap["unassigned"].unassigned++;
+      } else if (normalizedStatus === "unassigned" || isEscalated) {
         ticketStatusCountMap[assigneeId].escalated++;
       } else if (normalizedStatus === "open") {
         ticketStatusCountMap[assigneeId].open++;
@@ -184,10 +219,14 @@ app.get("/api/zoho-assignees-with-ticket-counts", async (req, res) => {
       }
     });
 
-    // Filter out any unassigned key if present (optional)
-    // And only map users who are actual users (no unassigned member)
+    users.push({
+      id: "unassigned",
+      fullName: "Unassigned",
+      displayName: "Unassigned",
+    });
+
     const members = users
-      .filter((user) => user.id in ticketStatusCountMap && user.id !== "unassigned")
+      .filter((user) => user.id in ticketStatusCountMap)
       .map((user) => {
         let name = "Unknown";
         if (user.firstName && user.lastName) name = `${user.firstName} ${user.lastName}`;
@@ -200,6 +239,7 @@ app.get("/api/zoho-assignees-with-ticket-counts", async (req, res) => {
           id: user.id,
           name,
           tickets: ticketStatusCountMap[user.id],
+          latestUnassignedTicketId: latestUnassignedTicketIdMap[user.id] || null,
         };
       });
 

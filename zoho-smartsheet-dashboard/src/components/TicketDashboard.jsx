@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import Select, { components } from "react-select";
 import { FaBars } from "react-icons/fa";
 import "./TicketDashboard.css";
@@ -14,13 +14,7 @@ const CANDIDATES_PER_PAGE = 24;
 
 const Option = (props) => (
   <components.Option {...props}>
-    <input
-      type="checkbox"
-      checked={props.isSelected}
-      readOnly
-      style={{ marginRight: 8 }}
-      tabIndex={-1}
-    />
+    <input type="checkbox" checked={props.isSelected} readOnly style={{ marginRight: 8 }} tabIndex={-1} />
     {props.label}
   </components.Option>
 );
@@ -34,8 +28,7 @@ const selectStyles = {
     background: "linear-gradient(145deg, #d0daf9, #a3baff)",
     borderRadius: 18,
     border: "1px solid #5e7ce4",
-    boxShadow:
-      "8px 8px 28px rgba(63,81,181,0.8), inset 6px 6px 14px #fff, inset -6px -6px 14px rgba(48,62,142,0.85)",
+    boxShadow: "8px 8px 28px rgba(63,81,181,0.8), inset 6px 6px 14px #fff, inset -6px -6px 14px rgba(48,62,142,0.85)",
     fontWeight: 700,
     fontSize: 14,
     textTransform: "uppercase",
@@ -56,9 +49,7 @@ async function fetchZohoDataFromBackend(setRows, setError) {
   try {
     const url = "http://localhost:5000/api/zoho-assignees-with-ticket-counts";
     const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error("Failed to fetch Zoho assignee ticket counts");
-    }
+    if (!response.ok) throw new Error("Failed to fetch Zoho assignee ticket counts");
     const data = await response.json();
 
     const rows = data.map((member) => ({
@@ -70,6 +61,7 @@ async function fetchZohoDataFromBackend(setRows, setError) {
         { columnId: UNASSIGNED_STATUS_COL_ID, value: member.tickets.unassigned?.toString() || "0" },
         { columnId: IN_PROGRESS_STATUS_COL_ID, value: member.tickets.inProgress?.toString() || "0" },
       ],
+      latestUnassignedTicketId: member.latestUnassignedTicketId || null,
     }));
 
     setRows(rows);
@@ -97,6 +89,13 @@ function TicketDashboard() {
   const [gridCells, setGridCells] = useState([]);
   const [filtersVisible, setFiltersVisible] = useState(true);
 
+  const [unassignedBlink, setUnassignedBlink] = useState(false);
+  const prevUnassignedCountRef = useRef(unassignedSum);
+  const [popupContent, setPopupContent] = useState("");
+  const [showPopup] = useState(true);
+
+  const intervalRef = useRef(null);
+
   const statusOptions = [
     { value: "open", label: "Open" },
     { value: "hold", label: "Hold" },
@@ -112,44 +111,50 @@ function TicketDashboard() {
     fetchZohoDataFromBackend(setRows, setError);
   }, []);
 
-  const nonZeroRows = useMemo(() => {
-    return rows.filter((row) =>
-      row.cells.some((c) => c.columnId !== ASSIGNEE_COL_ID && Number(c.value) > 0)
-    );
-  }, [rows]);
+  const nonZeroRows = useMemo(() => rows, [rows]);
 
   const candidateOptions = useMemo(() => {
     const setNames = new Set();
-    nonZeroRows.forEach(row => {
-      const name = row.cells.find(c => c.columnId === ASSIGNEE_COL_ID)?.value?.trim();
+    nonZeroRows.forEach((row) => {
+      const name = row.cells.find((c) => c.columnId === ASSIGNEE_COL_ID)?.value?.trim();
       if (name) setNames.add(name);
     });
-    return Array.from(setNames).sort().map(name => ({ value: name, label: name }));
+    return Array.from(setNames)
+      .sort()
+      .map((name) => ({ value: name, label: name }));
   }, [nonZeroRows]);
 
   const selectedStatusKeys = useMemo(
-    () => selectedStatuses.length > 0 ? selectedStatuses.map(s => s.value) : statusOptions.map(s => s.value),
+    () =>
+      selectedStatuses.length > 0
+        ? selectedStatuses.map((s) => s.value)
+        : statusOptions.map((s) => s.value),
     [selectedStatuses]
   );
 
   const personFilterOption = (option, inputValue) => {
     if (!inputValue) return true;
-    if (selectedCandidates.find(sel => sel.value === option.value)) return true;
+    if (selectedCandidates.find((sel) => sel.value === option.value)) return true;
     return option.label.toLowerCase().includes(inputValue.toLowerCase());
   };
 
   useEffect(() => {
-    const filteredRows = nonZeroRows.filter(row => {
-      const candidateRaw = row.cells.find(c => c.columnId === ASSIGNEE_COL_ID)?.value?.trim() || "";
+    const filteredRows = nonZeroRows.filter((row) => {
+      const candidateRaw =
+        row.cells.find((c) => c.columnId === ASSIGNEE_COL_ID)?.value?.trim() || "";
       const candidateLower = candidateRaw.toLowerCase();
       if (searchTerm && !candidateLower.includes(searchTerm.toLowerCase())) return false;
-      if (selectedCandidates.length > 0 && !selectedCandidates.some(c => c.value.toLowerCase() === candidateLower)) return false;
+      if (
+        selectedCandidates.length > 0 &&
+        !selectedCandidates.some((c) => c.value.toLowerCase() === candidateLower)
+      )
+        return false;
       return true;
     });
 
     const candidateCountMap = {};
-    filteredRows.forEach(row => {
-      const candidate = row.cells.find(c => c.columnId === ASSIGNEE_COL_ID)?.value?.trim();
+    filteredRows.forEach((row) => {
+      const candidate = row.cells.find((c) => c.columnId === ASSIGNEE_COL_ID)?.value?.trim();
       if (!candidate) return;
 
       const cellsById = row.cells.reduce((acc, cell) => {
@@ -164,18 +169,24 @@ function TicketDashboard() {
           escalated: 0,
           unassigned: 0,
           inProgress: 0,
+          latestUnassignedTicketId: row.latestUnassignedTicketId || null,
         };
       }
 
-      if (selectedStatusKeys.includes("open")) candidateCountMap[candidate].open += cellsById[OPEN_STATUS_COL_ID];
-      if (selectedStatusKeys.includes("hold")) candidateCountMap[candidate].hold += cellsById[HOLD_STATUS_COL_ID];
-      if (selectedStatusKeys.includes("inProgress")) candidateCountMap[candidate].inProgress += cellsById[IN_PROGRESS_STATUS_COL_ID];
-      if (selectedStatusKeys.includes("escalated")) candidateCountMap[candidate].escalated += cellsById[ESCALATED_STATUS_COL_ID];
-      if (selectedStatusKeys.includes("unassigned")) candidateCountMap[candidate].unassigned += cellsById[UNASSIGNED_STATUS_COL_ID];
+      if (selectedStatusKeys.includes("open"))
+        candidateCountMap[candidate].open += cellsById[OPEN_STATUS_COL_ID];
+      if (selectedStatusKeys.includes("hold"))
+        candidateCountMap[candidate].hold += cellsById[HOLD_STATUS_COL_ID];
+      if (selectedStatusKeys.includes("inProgress"))
+        candidateCountMap[candidate].inProgress += cellsById[IN_PROGRESS_STATUS_COL_ID];
+      if (selectedStatusKeys.includes("escalated"))
+        candidateCountMap[candidate].escalated += cellsById[ESCALATED_STATUS_COL_ID];
+      if (selectedStatusKeys.includes("unassigned"))
+        candidateCountMap[candidate].unassigned += cellsById[UNASSIGNED_STATUS_COL_ID];
     });
 
     const sums = { open: 0, hold: 0, escalated: 0, unassigned: 0, inProgress: 0 };
-    Object.values(candidateCountMap).forEach(c => {
+    Object.values(candidateCountMap).forEach((c) => {
       sums.open += c.open;
       sums.hold += c.hold;
       sums.escalated += c.escalated;
@@ -191,33 +202,60 @@ function TicketDashboard() {
 
     setFilteredCandidates(Object.entries(candidateCountMap));
     setCurrentPage(1);
-  }, [nonZeroRows, searchTerm, selectedCandidates, selectedStatuses, selectedStatusKeys]);
+
+    // Update popupContent to show latest unassigned ticket number in popup
+    const unassignedEntries = Object.entries(candidateCountMap).filter(
+      ([_, counts]) => counts.unassigned > 0
+    );
+    const popupTexts = unassignedEntries.map(([candidate, counts]) => {
+      if (counts.latestUnassignedTicketId)
+        return `${counts.latestUnassignedTicketId} - ${candidate}`;
+      return `${counts.unassigned} - ${candidate}`;
+    });
+
+    setPopupContent(popupTexts.join(" | "));
+  }, [
+    nonZeroRows,
+    searchTerm,
+    selectedCandidates,
+    selectedStatuses,
+    selectedStatusKeys,
+  ]);
 
   useEffect(() => {
-    const totalPages = Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE);
-    if (currentPage > totalPages && totalPages > 0) setCurrentPage(1);
-
     const sortedFilteredCandidates = [...filteredCandidates].sort((a, b) => {
       if (a[0] < b[0]) return sortOrder === "asc" ? -1 : 1;
       if (a[0] > b[0]) return sortOrder === "asc" ? 1 : -1;
       return 0;
     });
 
+    const nonZeroFilteredCandidates = sortedFilteredCandidates.filter(
+      ([_, counts]) =>
+        counts.open > 0 ||
+        counts.hold > 0 ||
+        counts.escalated > 0 ||
+        counts.unassigned > 0 ||
+        counts.inProgress > 0
+    );
+
+    const totalPages = Math.ceil(nonZeroFilteredCandidates.length / CANDIDATES_PER_PAGE);
+
+    if (currentPage > totalPages && totalPages > 0) setCurrentPage(1);
+
     const start = (currentPage - 1) * CANDIDATES_PER_PAGE;
-    const end = Math.min(start + CANDIDATES_PER_PAGE, sortedFilteredCandidates.length);
+    const end = Math.min(start + CANDIDATES_PER_PAGE, nonZeroFilteredCandidates.length);
 
     const cells = [];
     for (let i = start; i < end; i++) {
-      const [candidate, counts] = sortedFilteredCandidates[i];
-
-      // If "total" selected and other statuses selected, show sum of selected statuses counts only, hide others
+      const [candidate, counts] = nonZeroFilteredCandidates[i];
       const totalSelected = selectedStatusKeys.includes("total");
-      const selectedStatusesExcludingTotal = selectedStatusKeys.filter(k => k !== "total");
-
-      // Sum of selected status counts for this candidate when total selected with some statuses
-      const sumSelectedStatuses = selectedStatusesExcludingTotal.reduce((sum, key) => sum + (counts[key] || 0), 0);
-
-      // Boolean to determine if showing individual status breakdown or sum for 'total' + statuses
+      const selectedStatusesExcludingTotal = selectedStatusKeys.filter(
+        (k) => k !== "total"
+      );
+      const sumSelectedStatuses = selectedStatusesExcludingTotal.reduce(
+        (sum, key) => sum + (counts[key] || 0),
+        0
+      );
       const showSumOnly = totalSelected && selectedStatusesExcludingTotal.length > 0;
 
       cells.push(
@@ -230,44 +268,92 @@ function TicketDashboard() {
           <div className="ticket-counts" style={{ justifyContent: "center" }}>
             {showSumOnly ? (
               <div className="count-box total">{sumSelectedStatuses}</div>
+            ) : selectedStatusesExcludingTotal.length > 0 ? (
+              <>
+                {selectedStatusKeys.includes("open") && (
+                  <div className="count-box open">{counts.open}</div>
+                )}
+                {selectedStatusKeys.includes("hold") && (
+                  <div className="count-box hold">{counts.hold}</div>
+                )}
+                {selectedStatusKeys.includes("inProgress") && (
+                  <div className="count-box inprogress">{counts.inProgress}</div>
+                )}
+                {selectedStatusKeys.includes("escalated") && (
+                  <div className="count-box escalated">{counts.escalated}</div>
+                )}
+                {selectedStatusKeys.includes("unassigned") && (
+                  <div className="count-box unassigned">{counts.unassigned}</div>
+                )}
+              </>
             ) : (
-              // When not showing sumOnly, show individual counts if any status selected; else show total sum
-              (selectedStatusesExcludingTotal.length > 0 ? (
-                <>
-                  {selectedStatusKeys.includes("open") && <div className="count-box open">{counts.open}</div>}
-                  {selectedStatusKeys.includes("hold") && <div className="count-box hold">{counts.hold}</div>}
-                  {selectedStatusKeys.includes("inProgress") && <div className="count-box inprogress">{counts.inProgress}</div>}
-                  {selectedStatusKeys.includes("escalated") && <div className="count-box escalated">{counts.escalated}</div>}
-                  {selectedStatusKeys.includes("unassigned") && <div className="count-box unassigned">{counts.unassigned}</div>}
-                </>
-              ) : (
-                <div className="count-box total">
-                  {counts.open + counts.hold + counts.escalated + counts.unassigned + counts.inProgress}
-                </div>
-              ))
+              <div className="count-box total">
+                {counts.open +
+                  counts.hold +
+                  counts.escalated +
+                  counts.unassigned +
+                  counts.inProgress}
+              </div>
             )}
           </div>
         </div>
       );
     }
+
     setGridCells(cells);
   }, [filteredCandidates, currentPage, sortOrder, selectedStatusKeys]);
 
-  // Show TOTAL only when "total" is selected explicitly by user
-  const showLegendTotal = selectedStatuses.some(s => s.value === "total");
+  useEffect(() => {
+    if (unassignedSum > 0) setUnassignedBlink(true);
+    else setUnassignedBlink(false);
+    prevUnassignedCountRef.current = unassignedSum;
+  }, [unassignedSum]);
+
+  useEffect(() => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    const totalPages = Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE);
+    if (totalPages > 1) {
+      intervalRef.current = setInterval(() => {
+        setCurrentPage((prev) => (prev < totalPages ? prev + 1 : 1));
+      }, 10000);
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [filteredCandidates]);
+
+  const showLegendTotal = selectedStatuses.some((s) => s.value === "total");
+
+  const totalPagesForPagination = Math.ceil(
+    filteredCandidates.filter(
+      ([_, counts]) =>
+        counts.open > 0 ||
+        counts.hold > 0 ||
+        counts.escalated > 0 ||
+        counts.unassigned > 0 ||
+        counts.inProgress > 0
+    ).length / CANDIDATES_PER_PAGE
+  );
 
   return (
     <>
       <div
         className="dashboard-header-main"
-        style={{ maxWidth: 1300, margin: "0 auto 30px auto" }}
+        style={{ maxWidth: 1300, margin: "0 auto 30px auto", position: "relative" }}
       >
+        {showPopup && (
+          <div className="moving-popup" aria-live="polite" role="alert">
+            {popupContent}
+          </div>
+        )}
+
         <div
           className="dashboard-header-top"
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            position: "relative",
           }}
         >
           <img
@@ -286,6 +372,8 @@ function TicketDashboard() {
               textShadow: "2px 2px 6px rgba(0, 0, 50, 0.7)",
               userSelect: "none",
               textTransform: "uppercase",
+              position: "relative",
+              zIndex: 2,
             }}
           >
             TICKET DASHBOARD
@@ -296,6 +384,8 @@ function TicketDashboard() {
               flexDirection: "column",
               alignItems: "flex-end",
               gap: 10,
+              position: "relative",
+              zIndex: 2,
             }}
           >
             <img
@@ -343,11 +433,39 @@ function TicketDashboard() {
             <div className="legend-item inprogress">
               IN PROGRESS <span>{inProgressSum.toString().padStart(3, "0")}</span>
             </div>
+            <div
+              className={`legend-item unassigned ${unassignedBlink ? "blink-red" : ""}`}
+              style={{ minWidth: "160px" }}
+            >
+              UNASSIGNED&nbsp;
+              <span>{unassignedSum.toString().padStart(3, "0")}</span>
+              {rows.length > 0 && (
+                <span
+                  style={{
+                    marginLeft: 8,
+                    padding: "0 6px",
+                    backgroundColor: "#ff6666",
+                    borderRadius: 12,
+                    color: "#fff",
+                    fontWeight: "700",
+                    fontSize: "14px",
+                    userSelect: "none",
+                  }}
+                >
+                  {
+                    rows.find((r) =>
+                      r.cells.some(
+                        (c) =>
+                          c.columnId === ASSIGNEE_COL_ID &&
+                          c.value.toLowerCase() === "unassigned"
+                      )
+                    )?.latestUnassignedTicketId || ""
+                  }
+                </span>
+              )}
+            </div>
             <div className="legend-item escalated">
               ESCALATED <span>{escalatedSum.toString().padStart(3, "0")}</span>
-            </div>
-            <div className="legend-item unassigned">
-              UNASSIGNED <span>{unassignedSum.toString().padStart(3, "0")}</span>
             </div>
             {showLegendTotal && (
               <div

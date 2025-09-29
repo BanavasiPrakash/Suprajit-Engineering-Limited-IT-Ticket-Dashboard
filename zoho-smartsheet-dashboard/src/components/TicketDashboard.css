@@ -459,3 +459,61 @@ Hamburger button style
 
 
 
+.blink-red {
+  animation: blinkGlow 1.5s ease-in-out infinite;
+  box-shadow: 0 0 8px 3px rgba(255, 0, 0, 0.7);
+  border-radius: 12px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(45deg, #ff4444, #bb0000);
+  padding: 0 8px;
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+@keyframes blinkGlow {
+  0%, 100% {
+    background: linear-gradient(45deg, #ff4444, #bb0000);
+    box-shadow: 0 0 8px 3px rgba(255, 0, 0, 0.7);
+    color: #fff;
+  }
+  50% {
+    background: linear-gradient(45deg, #ff0000, #ff5555);
+    box-shadow: 0 0 18px 7px rgba(255, 80, 80, 1);
+    color: #ffeded;
+  }
+}
+
+.moving-popup {
+  position: absolute;
+  top: -40px;
+  left: -40%;
+  white-space: nowrap;
+  font-weight: 700;
+  font-size: 16px;
+  color: #222;
+  background: linear-gradient(135deg, #ffe066, #ffd34e, #ffc107);
+  padding: 10px 25px;
+  border-radius: 25px;
+  box-shadow:
+    0 0 12px 3px rgba(255, 193, 7, 0.6),
+    inset 0 -2px 10px rgba(255, 255, 255, 0.4);
+  user-select: none;
+  z-index: 12;
+  animation: moveLeftToRight 15s linear infinite;
+  text-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+}
+
+@keyframes moveLeftToRight {
+  0% {
+    left: -40%;
+    opacity: 1;
+  }
+  70% {
+    left: 100%;
+    opacity: 1;
+  }
+  100% {
+    left: 120%;
+    opacity: 0;
+  }
+}
