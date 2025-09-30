@@ -162,6 +162,9 @@ app.get("/api/zoho-assignees-with-ticket-counts", async (req, res) => {
     };
     latestUnassignedTicketIdMap["unassigned"] = null;
 
+    // Collect all unassigned ticket numbers here
+    const allUnassignedTicketNumbers = [];
+
     tickets.forEach((ticket) => {
       const assigneeRaw =
         ticket.assigneeId === undefined || ticket.assigneeId === null
@@ -185,17 +188,19 @@ app.get("/api/zoho-assignees-with-ticket-counts", async (req, res) => {
         latestUnassignedTicketIdMap[assigneeId] = null;
       }
 
-      // Track latest unassigned ticket ID if unassigned
+      // Add all unassigned ticket numbers
       if (isUnassignedAssignee || (ticket.status && ticket.status.toLowerCase() === "unassigned")) {
-        const currentTicketNumber = ticket.ticketNumber || ticket.id;
+        const ticketNumber = ticket.ticketNumber || ticket.id;
+        if (ticketNumber) {
+          allUnassignedTicketNumbers.push(ticketNumber);
+        }
         const currentLatest = latestUnassignedTicketIdMap[assigneeId];
-        // Assuming ticketNumber is numeric increasing, adjust if string
         if (
           currentLatest === null ||
-          (typeof currentLatest === "number" && currentTicketNumber > currentLatest) ||
-          (typeof currentLatest === "string" && currentTicketNumber.localeCompare(currentLatest) > 0)
+          (typeof currentLatest === "number" && ticketNumber > currentLatest) ||
+          (typeof currentLatest === "string" && ticketNumber.localeCompare(currentLatest) > 0)
         ) {
-          latestUnassignedTicketIdMap[assigneeId] = currentTicketNumber;
+          latestUnassignedTicketIdMap[assigneeId] = ticketNumber;
         }
       }
 
@@ -203,6 +208,11 @@ app.get("/api/zoho-assignees-with-ticket-counts", async (req, res) => {
       const normalizedStatus = statusMap[rawStatus] || "unassigned";
 
       const isEscalated = ticket.isEscalated === true || String(ticket.escalated).toLowerCase() === "true";
+
+      // Skip closed tickets under unassigned
+      if (isUnassignedAssignee && normalizedStatus === "closed") {
+        return; // Skip counting closed unassigned tickets
+      }
 
       if (isUnassignedAssignee) {
         ticketStatusCountMap["unassigned"].unassigned++;
@@ -243,7 +253,7 @@ app.get("/api/zoho-assignees-with-ticket-counts", async (req, res) => {
         };
       });
 
-    res.json(members);
+    res.json({ members, unassignedTicketNumbers: allUnassignedTicketNumbers });
   } catch (error) {
     console.error("API error:", error.response?.data || error.message);
     res.status(500).json({ error: "Failed to fetch assignee ticket counts" });

@@ -9,7 +9,7 @@
   justify-content: space-between;
   width: 100%;
   max-width: 1300px;
-  margin: 0 auto 40px auto;
+  margin: 0 auto 20px auto;
   gap: 20px;
 }
 
@@ -483,16 +483,16 @@ Hamburger button style
   }
 }
 
-.moving-popup {
+/* .moving-popup {
   position: absolute;
-  top: -40px;
-  left: -40%;
+  top: -20px;
+  left: -20%;
   white-space: nowrap;
   font-weight: 700;
   font-size: 16px;
   color: #222;
   background: linear-gradient(135deg, #ffe066, #ffd34e, #ffc107);
-  padding: 10px 25px;
+  padding: 8px 20px;
   border-radius: 25px;
   box-shadow:
     0 0 12px 3px rgba(255, 193, 7, 0.6),
@@ -516,4 +516,32 @@ Hamburger button style
     left: 120%;
     opacity: 0;
   }
+} */
+
+
+
+@keyframes blinkRedBox {
+  0%, 100% {
+    background: linear-gradient(90deg, #d43838 70%, #fc8282);
+    box-shadow: 0 1.5px 8px #d4383860, 0 2px 12px #fc828230;
+  }
+  50% {
+    background: linear-gradient(90deg, #fc2626 70%, #fc8282);
+    box-shadow: 0 2px 16px #d4383880, 0 2px 14px #fc828250;
+  }
+}
+.unassigned-box-blink {
+  animation: blinkRedBox 1s infinite;
+  border-radius: 16px;
+  color: #fff;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  font-size: 18px;
+  height: 40px;
+  box-shadow: 0 1.5px 8px #d4383860, 0 2px 12px #fc828230;
+  margin-left: 8px;
+  gap: 8px;
 }
