@@ -257,26 +257,46 @@
     inset 6px 6px 18px rgba(255, 255, 255, 1),
     inset -6px -6px 18px rgba(0, 76, 255, 0.85);
 }
-
 .count-box {
-  flex: 1;
-  border-radius: 18px;
+  flex: 0 0 auto;
+  min-width: 90px;
+  max-width: 130px;
+  height: 70px;
+  border-radius: 20px;
+  font-size: 40px;
+  font-weight: 900;
+  font-family: 'Montserrat', 'Poppins', Arial, sans-serif;
+  color: #20304a;
   text-align: center;
-  padding: 6px 0;
-  font-size: 22px;
-  font-weight: 800;
-  color: #333;
-  background: linear-gradient(145deg, #e8ecff, #bec7ff);
-  box-shadow: 3px 3px 9px rgba(0, 51, 153, 0.6),
-    -3px -3px 9px rgba(255, 255, 255, 0.9),
-    inset 2px 2px 6px rgba(255, 255, 255, 0.9),
-    inset -2px -2px 6px rgba(3, 25, 135, 0.6),
-    0 0 8px rgba(102, 122, 255, 0.6);
+  line-height: 70px;
+  background: linear-gradient(145deg, #abb9ff, #e2e9ff);
+
+  /* 3D shadows for realistic depth */
+  box-shadow:
+    6px 6px 15px rgba(0, 0, 50, 0.5),        /* Dark outer shadow */
+    -6px -6px 15px rgba(255, 255, 255, 0.7), /* Bright highlight */
+    inset 4px 4px 10px rgba(255, 255, 255, 0.9), /* Inner white shine */
+    inset -4px -4px 10px rgba(0, 0, 40, 0.2),    /* Inner darker contour */
+
+    /* Fog effect */
+    0 0 10px 5px rgba(220, 220, 255, 0.3),
+    0 0 30px 10px rgba(200, 200, 255, 0.15),
+    0 0 60px 20px rgba(180, 180, 255, 0.1);
+
+  /* Enhanced 3D text shadow for the font */
+  text-shadow:
+    1px 1px 0 #f0f4ff,   /* subtle light edge */
+    2px 2px 2px #7788ff, /* soft colored shadow */
+    0 4px 4px rgba(45, 62, 136, 0.9), /* strong dark shadow */
+    0 0 6px rgba(75, 98, 200, 0.7);  /* subtle glow */
+
   cursor: default;
   user-select: text;
-  transition: transform 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease;
-  animation: glowShadow 3s ease-in-out infinite;
+  transition: box-shadow 0.3s ease, background 0.3s ease;
+  display: inline-block;
+  white-space: nowrap;
 }
+
 .count-box.open {
   color: #20bc52;           /* vivid green */
   /* border: 1px solid #4caf50;  green border */
